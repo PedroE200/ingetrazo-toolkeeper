@@ -6,8 +6,12 @@ carpeta del plugin para que reinstalarlo no lo borre) con:
 - ``parametros``: los valores de serie (ver ``_parametros.DEFECTOS``);
 - ``barras``: las barras personalizadas (QToolBar reales);
 - ``personales``: los comandos personales (carpeta, web, menú, script, acceso directo);
-- ``filtros``: últimos textos del filtro del gestor maestro;
-- ``plegados``: apartados del gestor maestro que se dejaron plegados.
+- ``filtros``: últimos textos del filtro del gestor de barras;
+- ``plegados``: apartados del gestor de barras que se dejaron plegados;
+- ``estados``: colocaciones de barras y paneles guardadas con un nombre;
+- ``conjuntos``: conjuntos de extensiones (activas / inactivas, y si se
+  pide, la colocación de barras), ``conjunto_anterior`` (lo que había antes
+  de aplicar uno) y ``colocacion_pendiente`` (la que se aplica al arrancar).
 
 Las copias de seguridad (``backups/igz_toolkeeper_YYYYMMDD_HHMMSS.json``) se
 hacen una vez por sesión o por día, y se purgan a los N días.
@@ -78,6 +82,36 @@ def _valida_barra(b) -> dict | None:
     return base
 
 
+def _valida_estado(e) -> dict | None:
+    if not isinstance(e, dict) or not e.get("nombre") or not isinstance(e.get("qt"), str):
+        return None
+    return {"nombre": str(e["nombre"]), "qt": e["qt"], "fecha": str(e.get("fecha") or "")}
+
+
+def _ids(valor) -> list:
+    return [str(i) for i in valor if isinstance(i, str) and i] if isinstance(valor, list) else []
+
+
+def _valida_conjunto(c) -> dict | None:
+    if not isinstance(c, dict) or not c.get("nombre"):
+        return None
+    activas, inactivas = _ids(c.get("activas")), _ids(c.get("inactivas"))
+    if not activas and not inactivas:
+        return None
+    qt = c.get("qt") if isinstance(c.get("qt"), str) else ""
+    return {"nombre": str(c["nombre"]), "fecha": str(c.get("fecha") or ""),
+            "activas": activas, "inactivas": [i for i in inactivas if i not in activas], "qt": qt}
+
+
+def _valida_anterior(a) -> dict:
+    if not isinstance(a, dict):
+        return {}
+    limpio = {"activas": _ids(a.get("activas")), "inactivas": _ids(a.get("inactivas"))}
+    if isinstance(a.get("qt"), str) and a["qt"]:
+        limpio["qt"] = a["qt"]
+    return limpio if limpio["activas"] or limpio["inactivas"] else {}
+
+
 def _valida_personal(c) -> dict | None:
     if not isinstance(c, dict) or not c.get("id") or c.get("tipo") not in (
             "documento", "carpeta", "web", "menu", "script"):
@@ -107,7 +141,8 @@ class Almacen:
 
     def _vacio(self) -> dict:
         return {"version": VERSION_DATOS, "parametros": dict(self.defecto),
-                "barras": [], "personales": [], "filtros": [], "plegados": [], "ultimo_backup": ""}
+                "barras": [], "personales": [], "filtros": [], "plegados": [], "estados": [],
+                "conjuntos": [], "conjunto_anterior": {}, "colocacion_pendiente": "", "ultimo_backup": ""}
 
     # -- lectura / escritura
     def _leer(self) -> None:
@@ -142,6 +177,9 @@ class Almacen:
         self.datos["personales"] = [c for c in map(_valida_personal, self.datos["personales"]) if c]
         self.datos["filtros"] = [str(f) for f in self.datos["filtros"]][:12]
         self.datos["plegados"] = [str(s) for s in self.datos["plegados"]][:200]
+        self.datos["estados"] = [e for e in map(_valida_estado, self.datos["estados"]) if e]
+        self.datos["conjuntos"] = [c for c in map(_valida_conjunto, self.datos["conjuntos"]) if c]
+        self.datos["conjunto_anterior"] = _valida_anterior(self.datos["conjunto_anterior"])
 
     def volcado(self) -> dict:
         return json.loads(json.dumps(self.datos, ensure_ascii=False))
@@ -199,7 +237,7 @@ class Almacen:
         del self.filtros[12:]
         self.guardar_pronto()
 
-    # -- apartados plegados del gestor maestro
+    # -- apartados plegados del gestor de barras
     @property
     def plegados(self) -> list:
         return self.datos["plegados"]
@@ -207,6 +245,87 @@ class Almacen:
     def poner_plegados(self, claves) -> None:
         self.datos["plegados"] = [str(c) for c in claves][:200]
         self.guardar_pronto()
+
+    # -- estados de las barras
+    @property
+    def estados(self) -> list:
+        return self.datos["estados"]
+
+    def estado(self, nombre: str) -> dict | None:
+        clave = nombre.casefold()
+        return next((e for e in self.estados if e["nombre"].casefold() == clave), None)
+
+    def poner_estado(self, nombre: str, qt: str) -> None:
+        e = self.estado(nombre)
+        if e is None:
+            e = {"nombre": nombre}
+            self.estados.append(e)
+        e["qt"], e["fecha"] = qt, ahora()
+        self.guardar()
+
+    def borrar_estado(self, nombre: str) -> None:
+        self.datos["estados"] = [e for e in self.estados if e["nombre"] != nombre]
+        self.guardar()
+
+    # -- conjuntos de extensiones
+    @property
+    def conjuntos(self) -> list:
+        return self.datos["conjuntos"]
+
+    def conjunto(self, nombre: str) -> dict | None:
+        clave = (nombre or "").casefold()
+        return next((c for c in self.conjuntos if c["nombre"].casefold() == clave), None)
+
+    def poner_conjunto(self, nombre: str, estado: dict, qt: str = "") -> None:
+        c = self.conjunto(nombre)
+        if c is None:
+            c = {"nombre": nombre}
+            self.conjuntos.append(c)
+        c["activas"] = sorted((i for i, v in estado.items() if v), key=str.casefold)
+        c["inactivas"] = sorted((i for i, v in estado.items() if not v), key=str.casefold)
+        c["qt"], c["fecha"] = qt or "", ahora()
+        self.guardar()
+
+    def renombrar_conjunto(self, nombre: str, nuevo: str) -> None:
+        c = self.conjunto(nombre)
+        if c is not None:
+            c["nombre"] = nuevo
+            self.guardar()
+
+    def borrar_conjunto(self, nombre: str) -> None:
+        self.datos["conjuntos"] = [c for c in self.conjuntos if c["nombre"] != nombre]
+        self.guardar()
+
+    def importar_conjuntos(self, crudo) -> list:
+        """Añade los conjuntos de ``crudo`` (un archivo de conjuntos o una
+        configuración completa) que no estén ya por nombre. Devuelve sus nombres."""
+        lista = crudo.get("conjuntos") if isinstance(crudo, dict) else crudo
+        if isinstance(crudo, dict) and lista is None and "nombre" in crudo:
+            lista = [crudo]
+        nuevos = []
+        for c in map(_valida_conjunto, lista if isinstance(lista, list) else []):
+            if c and self.conjunto(c["nombre"]) is None:
+                self.conjuntos.append(c)
+                nuevos.append(c["nombre"])
+        if nuevos:
+            self.guardar()
+        return nuevos
+
+    @property
+    def conjunto_anterior(self) -> dict:
+        return self.datos["conjunto_anterior"]
+
+    def poner_anterior(self, anterior: dict) -> None:
+        self.datos["conjunto_anterior"] = _valida_anterior(anterior)
+        self.guardar()
+
+    @property
+    def colocacion_pendiente(self) -> str:
+        return self.datos["colocacion_pendiente"]
+
+    def poner_colocacion_pendiente(self, qt: str) -> None:
+        self.datos["colocacion_pendiente"] = qt or ""
+        self.guardar()
 
     # -- exportar / importar / copias
     def exportar(self, ruta) -> None:
@@ -216,7 +335,15 @@ class Almacen:
     def importar(self, ruta, combinar: bool) -> None:
         crudo = json.loads(Path(ruta).read_text(encoding="utf-8"))
         if not combinar:
+            # Un archivo sin estados o sin conjuntos no borra los que hay; lo
+            # pendiente de este PC (anterior, colocación) tampoco viaja.
+            guardado = {k: self.datos[k] for k in ("estados", "conjuntos")}
+            local = {k: self.datos[k] for k in ("conjunto_anterior", "colocacion_pendiente")}
             self.cargar(crudo)
+            for k, v in guardado.items():
+                if not isinstance(crudo, dict) or k not in crudo:
+                    self.datos[k] = v
+            self.datos.update(local)
             self.guardar()
             return
         otro = Almacen.__new__(Almacen)
@@ -230,6 +357,12 @@ class Almacen:
         for c in otro.personales:
             if self.personal(c["id"]) is None:
                 self.personales.append(c)
+        for e in otro.estados:
+            if self.estado(e["nombre"]) is None:
+                self.estados.append(e)
+        for c in otro.conjuntos:
+            if self.conjunto(c["nombre"]) is None:
+                self.conjuntos.append(c)
         self.guardar()
 
     def carpeta_backups(self) -> Path:

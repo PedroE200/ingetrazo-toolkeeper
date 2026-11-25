@@ -25,7 +25,7 @@ log = logging.getLogger("ingetrazo.plugins.igz_toolkeeper")
 
 PREFIJO = "igz_toolkeeper"              # objectName de lo propio (IngeTrazo recuerda por él la posición de las barras)
 SEP_RUTA = " ▸ "
-# Barras nativas de IngeTrazo 0.5.8, en el orden del gestor maestro.
+# Barras nativas de IngeTrazo 0.5.8, en el orden del gestor de barras.
 NATIVAS = ("main", "draw", "modify", "annotate", "sections", "solids", "walkthrough",
            "view", "views", "panels_toolbar")
 
@@ -147,7 +147,7 @@ def _descripcion(act: QAction) -> str:
 
 
 class Catalogo:
-    """Índice clave → comando y las secciones del gestor maestro,
+    """Índice clave → comando y las secciones del gestor de barras,
     reconstruidos cuando hace falta (como mucho una vez cada dos segundos
     al pedir una clave que no está)."""
 

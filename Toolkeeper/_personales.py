@@ -21,6 +21,7 @@ from . import _iconos
 from ._catalogo import PREFIJO, Comando
 from ._datos import PERSONAL, nuevo_personal
 from ._i18n import _t
+from ._voz import con_microfono
 
 log = logging.getLogger("ingetrazo.plugins.igz_toolkeeper")
 
@@ -162,9 +163,9 @@ class DialogoPersonal(QDialog):
         self.setWindowTitle(_t("New Personal Command [{type}]", type=etiqueta_tipo(tipo))
                             if datos is None else _t("Personal Command [{type}]", type=etiqueta_tipo(tipo)))
         f = QFormLayout(self)
-        self.nombre = QLineEdit(self.datos["nombre"])
+        self.nombre = con_microfono(QLineEdit(self.datos["nombre"]))
         f.addRow(_t("Name"), self.nombre)
-        self.descripcion = QLineEdit(self.datos.get("descripcion", ""))
+        self.descripcion = con_microfono(QLineEdit(self.datos.get("descripcion", "")))
         f.addRow(_t("Description"), self.descripcion)
         self.atajo = QKeySequenceEdit(QKeySequence(self.datos.get("atajo", "")))
         fila = QHBoxLayout()
@@ -204,7 +205,7 @@ class DialogoPersonal(QDialog):
             self.destino.setCurrentIndex(max(0, i))
             f.addRow(etiqueta_tipo(tipo), self.destino)
         else:
-            self.destino = QLineEdit(self.datos.get("destino", ""))
+            self.destino = con_microfono(QLineEdit(self.datos.get("destino", "")))
             fila = QHBoxLayout()
             fila.addWidget(self.destino, 1)
             if tipo != "web":

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Barras de herramientas reales (QToolBar): la barra «Toolkeeper»
-y las barras personalizadas del gestor maestro, hechas con cualquier comando."""
+y las barras personalizadas del gestor de barras, hechas con cualquier comando."""
 from __future__ import annotations
 
 import logging
@@ -161,7 +161,7 @@ def menu_en_boton(tb: QToolBar, act: QAction, construir) -> None:
 
 
 class BarrasPersonalizadas:
-    """Las «Custom toolbars» del gestor maestro: QToolBar reales."""
+    """Las «Custom toolbars» del gestor de barras: QToolBar reales."""
 
     def __init__(self, maestro) -> None:
         self.m = maestro
@@ -199,7 +199,7 @@ class BarrasPersonalizadas:
                 espejos.append(act)
             menu_en_boton(tb, act, lambda menu, k=key: self.menu_item(menu, bid, k))
         if not b["items"]:
-            vacio = QAction(_t("(empty — drag icons here from the Master Toolbar Manager)"), dueno())
+            vacio = QAction(_t("(empty — drag icons here from the Toolbar Manager)"), dueno())
             vacio.setEnabled(False)
             tb.addAction(vacio)
             espejos.append(vacio)
@@ -257,6 +257,11 @@ class BarrasPersonalizadas:
     def anadir_item(self, bid: str, key: str, indice: int | None = None) -> None:
         b = self.m.almacen.barra(bid)
         if b is None:
+            return
+        d = self.m.destino_de(key)
+        if d is not None:                   # p. ej. un botón de Rosco: solo vale allí
+            self.m.app.viewport.flash_status(
+                _t("«{name}» can only go in the {bar} toolbar.", name=d.nombre(key), bar=d.titulo), 3500)
             return
         if key != SEPARADOR and key in b["items"]:
             b["items"].remove(key)

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""«List of Shortcuts» con editor, en el tema oscuro del gestor maestro:
+"""«List of Shortcuts» con editor, en el tema oscuro del gestor de barras:
 
 - a la izquierda, solo los comandos con atajo (Atajo · Comando ·
   Asignado por), ordenables pulsando el encabezado; por tecla siguen
@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from ._catalogo import PREFIJO, clave, normalizar, plano, vivo
 from ._i18n import _t
+from ._voz import con_microfono
 from ._maestro_dlg import (
     BARRAS, BORDE, ESTILO, EXTENSION, FONDO, NATIVOS, PERSONALES, TEXTO, TEXTO_SUAVE,
 )
@@ -234,7 +235,7 @@ class DialogoAtajos(QDialog):
         fila = QHBoxLayout(barra)
         fila.setContentsMargins(8, 6, 8, 6)
         fila.setSpacing(6)
-        self.filtro = QLineEdit()
+        self.filtro = con_microfono(QLineEdit())
         self.filtro.setPlaceholderText(_t("Search…"))
         self.filtro.setClearButtonEnabled(True)
         self.filtro.textChanged.connect(lambda _t_: self._filtrar_centro())
@@ -339,7 +340,7 @@ class DialogoAtajos(QDialog):
         v.setContentsMargins(10, 10, 10, 10)
         v.setSpacing(4)
         v.addWidget(self._rotulo(_t("Command")))
-        self.busca = QLineEdit()
+        self.busca = con_microfono(QLineEdit())
         self.busca.setPlaceholderText(_t("Search a command…"))
         self.busca.setClearButtonEnabled(True)
         self.busca.textChanged.connect(self._buscar)

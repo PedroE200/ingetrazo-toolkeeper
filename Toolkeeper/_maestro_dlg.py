@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""El gestor maestro de barras, siempre en tema oscuro:
+"""El gestor de barras, siempre en tema oscuro:
 
 - cabecera: Filtro (con los filtros recientes), Plegar / Desplegar todo,
   Atajos (la lista de todos los atajos), Extensiones (el gestor de
-  extensiones de IngeTrazo), Idioma, ayuda, importar, exportar, imprimir;
+  extensiones de IngeTrazo y conjuntos de extensiones), Estados, Idioma, ayuda, importar, exportar, imprimir;
 - a la izquierda, un árbol de apartados plegables (se recuerda cuáles se
   dejaron plegados): «Comandos nativos de IngeTrazo» con una fila por barra
   nativa (y por menú), y una sección por extensión, con una fila por barra
   o submenú y una casilla para mostrar u ocultar la barra;
-- en el lateral derecho, también plegables: «Barras personalizadas» con el
-  tirador de separador y «Crear barra personalizada…» (cada barra con casilla,
+- en el lateral derecho, también plegables: los paneles de otras
+  extensiones (Barra Rosco), «Barras personalizadas» con el tirador de
+  separador y «Crear barra personalizada…» (cada barra con casilla,
   renombrar, borrar y sus iconos), y debajo «Comandos personales» con
   [Nuevo…] y una fila por tipo;
 - línea de estado con el comando señalado.
@@ -32,6 +33,7 @@ from ._catalogo import PREFIJO, coincide, vivo
 from ._datos import SEPARADOR
 from ._i18n import _t, idioma_elegido
 from ._personales import TIPOS, etiqueta_tipo
+from ._voz import con_microfono
 
 # Tema oscuro: (fondo de la cabecera, texto) de cada clase de apartado.
 FONDO, FONDO_CAB, FONDO_HONDO, TEXTO, TEXTO_SUAVE, BORDE = \
@@ -40,6 +42,7 @@ PERSONALES = ("#633806", "#FAC775")
 NATIVOS = ("#791F1F", "#F7C1C1")
 EXTENSION = ("#0C447C", "#B5D4F4")
 BARRAS = ("#27500A", "#C0DD97")
+DESTINO = ("#3C3489", "#CECBF6")        # apartados de otras extensiones (Rosco)
 FONDO_LATERAL, FONDO_BARRAS, BORDE_LATERAL = "#1e1e1e", "#1f2a1a", "#2f3d27"
 ANCHO_LATERAL = 300
 ETIQUETA_ARBOL = 150            # ancho del nombre de cada fila del árbol
@@ -193,7 +196,7 @@ class _NombreBarra(QWidget):
             " border: 1px solid transparent; border-radius: 3px; }"
             " QLabel#nombre_barra:hover { border-color: #639922; background: #27361f; }")
         h.addWidget(self.rotulo, 1)
-        self.edicion = QLineEdit(nombre)
+        self.edicion = con_microfono(QLineEdit(nombre))
         self.edicion.setStyleSheet("QLineEdit { background: #1b1b1b; color: #EAF3DE; border: 1px solid #f37329;"
                                    " border-radius: 3px; padding: 1px 4px; }")
         self.edicion.editingFinished.connect(self._guardar)
@@ -331,7 +334,7 @@ class GestorMaestro(QDialog):
         cab.setContentsMargins(8, 6, 8, 6)
         cab.setSpacing(6)
         cab.addWidget(QLabel(f"<b>{_t('Filter')}</b>"))
-        self.filtro = QLineEdit()
+        self.filtro = con_microfono(QLineEdit())
         self.filtro.setClearButtonEnabled(True)
         self.filtro.textChanged.connect(lambda _t_: self._filtrar())
         self.filtro.editingFinished.connect(lambda: maestro.almacen.recordar_filtro(self.filtro.text()))
@@ -347,8 +350,22 @@ class GestorMaestro(QDialog):
         self.todo = self._boton("", "", self._alternar_todo)
         cab.addWidget(self.todo)
         cab.addWidget(self._boton("⌨ " + _t("Shortcuts"), _t("Open the list of all shortcuts"), maestro.abrir_atajos))
-        cab.addWidget(self._boton("🧩 " + _t("Extensions"), _t("Open the IngeTrazo extension manager"),
-                                  maestro.abrir_gestor_extensiones))
+        # Extensiones: el gestor de extensiones de IngeTrazo y los conjuntos de extensiones.
+        extensiones = self._boton("🧩 " + _t("Extensions") + " ▾",
+                                  _t("Open the IngeTrazo extension manager or save and bring back which "
+                                     "extensions are on and off"))
+        extensiones.setPopupMode(QToolButton.InstantPopup)
+        menu_ext = QMenu(extensiones)
+        menu_ext.aboutToShow.connect(lambda: maestro.conjuntos.menu(menu_ext, con_gestor=True))
+        extensiones.setMenu(menu_ext)
+        cab.addWidget(extensiones)
+        # Estados: el mismo submenú que el del menú de la extensión.
+        estados = self._boton(_t("States") + " ▾", _t("Save and bring back the layout of toolbars and panels"))
+        estados.setPopupMode(QToolButton.InstantPopup)
+        menu_estados = QMenu(estados)
+        menu_estados.aboutToShow.connect(lambda: maestro.estados.menu(menu_estados))
+        estados.setMenu(menu_estados)
+        cab.addWidget(estados)
         # Idioma: el mismo submenú que Extensiones ▸ Toolkeeper ▸ Idioma;
         # al cambiarlo, el Maestro rehace esta ventana.
         idioma = self._boton(f"🌐 {(idioma_elegido() or 'Auto').upper()} ▾", _t("Language of Toolkeeper"))
@@ -477,6 +494,19 @@ class GestorMaestro(QDialog):
                 else:
                     etiqueta = QLabel(f"<span style='color:{'#F09595' if nativa else '#85B7EB'}'>{nombre_fila}</span>")
                 sec.anadir(self._fila(etiqueta, [c.key for c in comandos]))
+        # Los botones propios de otras extensiones (Rosco): se arrastran
+        # a su apartado del lateral.
+        for d in m.destinos():
+            try:
+                filas = d.secciones()
+            except Exception:  # noqa: BLE001 — un destino roto no rompe el gestor
+                continue
+            sec = self._seccion("__destino_" + d.prefijo, d.titulo,
+                                DESTINO, sum(len(keys) for _f, keys in filas))
+            sec.cabecera.extra.addStretch(1)
+            for nombre_fila, keys in filas:
+                etiqueta = QLabel(f"<span style='color:{DESTINO[1]}'>{nombre_fila}</span>")
+                sec.anadir(self._fila(etiqueta, keys))
         self._rellenar_lateral()
         self._texto_todo()
         self._filtrar()
@@ -510,6 +540,21 @@ class GestorMaestro(QDialog):
 
     def _rellenar_lateral(self) -> None:
         m = self.m
+        # Lo que configuran otras extensiones (la Barra Rosco): reciben
+        # lo que se arrastra desde el árbol.
+        for d in m.destinos():
+            try:
+                n = int(d.n_huecos())
+            except Exception:  # noqa: BLE001
+                n = 0
+            sec = self._seccion("__panel_" + d.prefijo, _t("{name} toolbar", name=d.titulo), DESTINO, n,
+                                lateral=True, fijo=True)
+            try:
+                sec.anadir(d.crear_panel(m, sec.cuerpo))
+            except Exception:  # noqa: BLE001
+                import logging
+                logging.getLogger("ingetrazo.plugins.igz_toolkeeper").exception(
+                    "no se pudo crear el apartado de %s", d.titulo)
         self._lateral_barras(m)
         self._lateral_personales(m)
 
@@ -698,7 +743,7 @@ class GestorMaestro(QDialog):
 
     def _imprimir(self) -> None:
         from ._parametros import imprimir_html
-        partes = [f"<h2>{_t('Master Toolbar Manager')}</h2>"]
+        partes = [f"<h2>{_t('Toolkeeper')}</h2>"]
         for titulo, filas, nativa in self.m.catalogo.secciones():
             partes.append(f"<h3>{_t('IngeTrazo native commands') if nativa else titulo}</h3>")
             for nombre_fila, comandos in filas:

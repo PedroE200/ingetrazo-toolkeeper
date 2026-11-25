@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""El botón de icono del gestor maestro y el arrastre de iconos hacia las
+"""El botón de icono del gestor de barras y el arrastre de iconos hacia las
 barras personalizadas."""
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QToolBar, QToolButton
 from ._catalogo import vivo
 from ._i18n import _t
 
-MIME = "application/x-igz-toolkeeper"      # tipo propio de los arrastres de Toolkeeper
+MIME = "application/x-igz-toolkeeper"      # Rosco acepta los arrastres por este tipo
 
 
 def datos_arrastre(key: str, origen: str, indice: int) -> QMimeData:

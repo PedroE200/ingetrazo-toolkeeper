@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Une las piezas de Toolkeeper: almacén, catálogo, comandos
 personales, barras personalizadas, la barra y el menú propios, y los
-diálogos que quedan (gestor maestro, atajos, ayuda)."""
+diálogos que quedan (gestor de barras, atajos, ayuda)."""
 from __future__ import annotations
 
 import logging
@@ -9,22 +9,25 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence
-from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu, QMessageBox, QToolBar
+from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QToolBar
 
 from . import _iconos
 from ._barras import BarrasPersonalizadas, ESPERA_MS, crear_barra, tamano_icono, vaciar
 from ._catalogo import PREFIJO, Catalogo, de_maestro, origen_ingles, plano, tr_app
+from ._conjuntos import Conjuntos
 from ._datos import COPIA, Almacen, EXT_CONFIG
+from ._estados import Estados
 from ._i18n import IDIOMAS, _t, idioma_elegido, poner_idioma
 from ._parametros import DEFECTOS
 from ._personales import Personales, TIPOS
+from ._voz import pedir_texto
 
 log = logging.getLogger("ingetrazo.plugins.igz_toolkeeper")
 
 ATAJOS = {"atajos": "Ctrl+Alt+Shift+5"}
 # Textos originales (en inglés) de la orden de IngeTrazo 0.5.8 que abre el gestor de extensiones.
 GESTOR_EXTENSIONES = ("Manage extensions", "Extension manager")
-# El dragón azul: icono del gestor maestro (barra, menú y ventana).
+# El dragón azul: icono del gestor de barras (barra, menú y ventana).
 ICONO_GESTOR = Path(__file__).with_name("icono_gestor.png")
 
 
@@ -57,6 +60,8 @@ class Maestro:
         self._master = None
         self.redibujar_iconos(solo_dibujar=True)
         self.barras = BarrasPersonalizadas(self)
+        self.estados = Estados(self)
+        self.conjuntos = Conjuntos(self)
 
     # ---- instalación ----------------------------------------------------------
     def instalar(self) -> None:
@@ -78,6 +83,10 @@ class Maestro:
             log.exception("atajos guardados no aplicados")
         self._vigia = _VigiaTema(self)
         self.app.window.installEventFilter(self._vigia)
+        try:                                # colocación de barras que dejó un conjunto
+            self.conjuntos.tras_arranque()
+        except Exception:  # noqa: BLE001
+            log.exception("colocación pendiente de un conjunto")
         try:
             self.almacen.hacer_backup()
         except Exception:  # noqa: BLE001
@@ -115,13 +124,38 @@ class Maestro:
     def p(self, clave_p: str, defecto=None):
         return self.almacen.p(clave_p, defecto)
 
+    # ---- destinos de otras extensiones --------------------------------------
+    # Otra extensión (Rosco) se apunta en ``window._maestro_destinos`` con
+    # un objeto que da ``prefijo``, ``titulo``, ``secciones()`` (sus botones
+    # para el árbol), ``nombre(key)``, ``icono(key)``, ``descripcion(key)``,
+    # ``ejecutar(key)`` y ``crear_panel(maestro, padre)`` (su apartado del
+    # lateral, que acepta lo que se arrastra desde el árbol).
+    def destinos(self) -> list:
+        lista = getattr(self.app.window, "_maestro_destinos", None)
+        return [d for d in lista if getattr(d, "prefijo", "")] if isinstance(lista, list) else []
+
+    def destino_de(self, key: str):
+        return next((d for d in self.destinos() if key.startswith(d.prefijo)), None)
+
     def comando(self, key: str):
+        d = self.destino_de(key)
+        if d is not None:
+            from ._catalogo import Comando
+            return Comando(key, d.nombre(key), f"{d.titulo} ▸ {key[len(d.prefijo):]}", None,
+                           origen=d.titulo, descripcion=d.descripcion(key),
+                           run=lambda k=key, dd=d: dd.ejecutar(k))
         return self.catalogo.comando(key)
 
     def nombre(self, key: str) -> str:
+        d = self.destino_de(key)
+        if d is not None:
+            return d.nombre(key)
         return self.catalogo.nombre(key)
 
     def icono(self, key: str) -> QIcon:
+        d = self.destino_de(key)
+        if d is not None:
+            return d.icono(key)
         c = self.personales.de_key(key)
         if c is not None:
             return self.personales.icono(c)
@@ -130,6 +164,10 @@ class Maestro:
         return self.catalogo.icono(key, self.nombre(key))
 
     def ejecutar(self, key: str, origen: str = "") -> bool:
+        d = self.destino_de(key)
+        if d is not None:                   # botón de otra extensión: ella sabe qué hacer
+            d.ejecutar(key)
+            return True
         if origen == "master" and self._master is not None and self._master.isVisible() \
                 and self.p("cerrar_master_al_ejecutar", True):
             self._master.hide()
@@ -177,16 +215,13 @@ class Maestro:
         texto, consejo = (_t(s) if s else "" for s in self._textos[aid])
         atajo = act.shortcut().toString(QKeySequence.NativeText)
         act.setText(texto)
-        # El botón del gestor en la barra se llama como la extensión; en el
-        # menú conserva su nombre de orden.
-        cabeza = _t("Toolkeeper") if aid == "master" else texto
-        cabeza = f"{cabeza} ({atajo})" if atajo else cabeza
+        cabeza = f"{texto} ({atajo})" if atajo else texto
         act.setToolTip(f"{cabeza}\n{consejo}" if consejo else cabeza)
         act.setStatusTip(consejo)
 
     def _crear_acciones(self) -> None:
         A = self._accion
-        A("master", "Master Toolbar Manager", "Manage all toolbars loaded in IngeTrazo", self.abrir_master)
+        A("master", "Toolbar Manager", "Manage all toolbars loaded in IngeTrazo", self.abrir_master)
         A("backup", "Backup config", "Make a backup copy of the configuration now", self.backup_manual)
         A("importar", "Import config", "Import custom toolbars and personal commands from a file or a backup",
           self.importar_archivo)
@@ -221,6 +256,13 @@ class Maestro:
         sub.aboutToShow.connect(lambda: self.menu_importar(sub))
         menu.addAction(a["exportar"])
         menu.addSeparator()
+        estados = menu.addMenu(_t("Toolbar states"))
+        estados.setObjectName(PREFIJO + "_menu_estados")
+        estados.aboutToShow.connect(lambda: self.estados.menu(estados))
+        conjuntos = menu.addMenu("🧩 " + _t("Extension sets"))
+        conjuntos.setObjectName(PREFIJO + "_menu_conjuntos")
+        conjuntos.aboutToShow.connect(lambda: self.conjuntos.menu(conjuntos))
+        menu.addSeparator()
         menu.addAction(a["atajos"])
         idioma = menu.addMenu(_t("Language"))
         idioma.setObjectName(PREFIJO + "_menu_idioma")
@@ -229,6 +271,8 @@ class Maestro:
         self.menu = menu
         self._menu_importar = sub
         self._menu_idioma = idioma
+        self._menu_estados = estados
+        self._menu_conjuntos = conjuntos
 
     def menu_idioma(self, menu: QMenu) -> None:
         """Automático / Español / English / Français, con el elegido marcado."""
@@ -245,7 +289,7 @@ class Maestro:
 
     def cambiar_idioma(self, codigo: str) -> None:
         """Cambia el idioma de la extensión al momento: menú, botones de la
-        barra, barras personalizadas y el gestor maestro (se rehace)."""
+        barra, barras personalizadas y el gestor de barras (se rehace)."""
         if codigo == idioma_elegido():
             return
         poner_idioma(codigo)
@@ -255,7 +299,10 @@ class Maestro:
             self.menu.setTitle(_t("Toolkeeper"))
             self._menu_importar.setTitle(_t("Import config"))
             self._menu_idioma.setTitle(_t("Language"))
+            self._menu_estados.setTitle(_t("Toolbar states"))
+            self._menu_conjuntos.setTitle("🧩 " + _t("Extension sets"))
         self.barras.construir_todas()
+        self.conjuntos.idioma_cambiado()
         if self._master is not None:
             visible = self._master.isVisible()
             sitio = self._master.saveGeometry()
@@ -286,7 +333,7 @@ class Maestro:
 
     def barras_cambiadas(self) -> None:
         """Una barra personalizada ganó, perdió o cambió algo: el lateral del
-        gestor maestro se rehace (después, por si el aviso llega desde un
+        gestor de barras se rehace (después, por si el aviso llega desde un
         widget del propio lateral, p. ej. al soltar un icono en él)."""
         if self._master is not None and self._master.isVisible():
             QTimer.singleShot(0, self._master.refrescar_lateral)
@@ -303,8 +350,8 @@ class Maestro:
                 self._master = GestorMaestro(self)
             self._master.abrir()
         except Exception as err:  # noqa: BLE001 — que el fallo se vea en vez de no abrir nada
-            log.exception("el gestor maestro no se pudo abrir")
-            self.app.viewport.flash_status(_t("The Master Toolbar Manager could not open: {err}", err=err), 8000)
+            log.exception("el gestor de barras no se pudo abrir")
+            self.app.viewport.flash_status(_t("The Toolbar Manager could not open: {err}", err=err), 8000)
 
     def abrir_atajos(self) -> None:
         try:
@@ -333,9 +380,9 @@ class Maestro:
 
     # -- barras personalizadas
     def nueva_barra_dialogo(self, items=None) -> dict | None:
-        nombre, ok = QInputDialog.getText(self.app.window, _t("Name of the custom toolbar"),
-                                          _t("Name of the custom toolbar"), QLineEdit.Normal,
-                                          _t("Toolbar {n}", n=len(self.almacen.barras) + 1))
+        nombre, ok = pedir_texto(self.app.window, _t("Name of the custom toolbar"),
+                                 _t("Name of the custom toolbar"),
+                                 _t("Toolbar {n}", n=len(self.almacen.barras) + 1))
         nombre = (nombre or "").strip()
         if not ok or not nombre:
             return None
@@ -350,8 +397,8 @@ class Maestro:
         b = self.almacen.barra(bid)
         if b is None:
             return
-        nombre, ok = QInputDialog.getText(self.app.window, _t("Rename the custom toolbar"), _t("Name of the custom toolbar"),
-                                          QLineEdit.Normal, b["nombre"])
+        nombre, ok = pedir_texto(self.app.window, _t("Rename the custom toolbar"), _t("Name of the custom toolbar"),
+                                 b["nombre"])
         if ok and nombre.strip():
             self.renombrar_barra(bid, nombre)
 

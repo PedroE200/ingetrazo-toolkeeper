@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QMessageBox
 from ._i18n import _t
 
 DEFECTOS = {
-    "cerrar_master_al_ejecutar": True,      # el gestor maestro se cierra al ejecutar un comando
+    "cerrar_master_al_ejecutar": True,      # el gestor de barras se cierra al ejecutar un comando
     "backup_auto": "sesion",                # copia automática: «sesion», «dia» o «no»
     "backup_purga_dias": 30,                # las copias se borran solas pasados N días
     "nombre_barra": "Toolkeeper",

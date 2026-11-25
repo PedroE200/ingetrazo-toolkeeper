@@ -30,7 +30,7 @@ class DialogoAyuda(QDialog):
     @staticmethod
     def html() -> str:
         secciones = (
-            (_t("Master Toolbar Manager"), _t(
+            (_t("Toolbar Manager"), _t(
                 "Every command, grouped: IngeTrazo native commands by toolbar and one section per extension (tick a "
                 "toolbar to show or hide it); on the right, custom toolbars (real dockable toolbars) and personal "
                 "commands (folder, web link, menu, Python script, file shortcut). Click an icon to run it; drag it "
@@ -42,9 +42,17 @@ class DialogoAyuda(QDialog):
             (_t("List of all shortcuts"), _t(
                 "Every shortcut of IngeTrazo, of the extensions and of your personal commands, by sections; "
                 "it can be filtered and printed.")),
+            (_t("Toolbar states"), _t(
+                "Save the layout of toolbars and panels under a name in States, in the window or in the menu of the "
+                "extension, and choose that name to bring it back. Only the layout changes, never what the panels contain.")),
+            (_t("Extension sets"), _t(
+                "Save under a name which extensions are on and which are off (Sets, in the window or in the menu of the "
+                "extension) and choose that name to go back to it. IngeTrazo only loads extensions when it starts: applying a "
+                "set leaves the changes ready and offers to restart. «Back to the previous one» undoes the last set applied. "
+                "A set can also remember where the toolbars and panels are.")),
             (_t("Language"), _t(
                 "Choose Automatic (the language of IngeTrazo), Español, English or Français in Language, in the "
-                "menu of the extension, or with the 🌐 button of the Master Toolbar Manager. It changes at once.")),
+                "menu of the extension, or with the 🌐 button of the Toolbar Manager. It changes at once.")),
         )
         partes = [f"<h2>{_t('Toolkeeper')}</h2><p><i>{_t('Toolbar manager for IngeTrazo: custom toolbars, personal commands, backups and shortcuts.')}</i></p>"]
         for titulo, cuerpo in secciones:
