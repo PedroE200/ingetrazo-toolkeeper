@@ -6,6 +6,16 @@ Toolbar manager for IngeTrazo: a tree with every IngeTrazo and extension command
 
 Extensión para [IngeTrazo](https://ingetrazo.com). Versión 2.6.0.
 
+## Capturas / Screenshots
+
+Gestor de barras, con el anillo de Rosco y la rueda de zoom. / Toolbar manager, with Rosco's ring and zoom wheel.
+
+![Gestor de barras](capturas/1-gestor-y-rueda-de-rosco.png)
+
+Grupo nuevo para el anillo de Rosco. / New group for Rosco's ring.
+
+![Nuevo grupo](capturas/2-nuevo-grupo-de-la-rueda.png)
+
 ## Instalar
 
 En IngeTrazo: **Extensiones ▸ Administrar extensiones**. También puedes copiar la carpeta `Toolkeeper` del zip de la última versión a `%APPDATA%\IngeTrazo\plugins\` y reiniciar IngeTrazo.
